@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import forge from 'node-forge'
+import { decryptPayload, encryptPayload } from '../utils/crypto'
 
 type RequestBody = {
   cert?: string
@@ -23,7 +24,18 @@ type CertInfo = {
 }
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<RequestBody>(event)
+  const config = useRuntimeConfig()
+  const secret = config.public.payloadSecret || 'fallback-secret-for-encryption-777'
+
+  let body = await readBody<any>(event)
+  
+  // If payload is encrypted, decrypt it
+  if (body && typeof body.payload === 'string') {
+    const decrypted = decryptPayload(body.payload, secret)
+    if (decrypted) {
+      body = JSON.parse(decrypted)
+    }
+  }
 
   const certInput = (body.cert || '').trim()
   const keyInput = (body.key || '').trim()
@@ -98,7 +110,7 @@ export default defineEventHandler(async (event) => {
     warnings.push('A true public fullchain usually needs one or more intermediate certificates.')
   }
 
-  return {
+  const result = {
     certPem,
     fullchainPem,
     privkeyPem,
@@ -109,6 +121,11 @@ export default defineEventHandler(async (event) => {
     verifyOutput: verifyResult.message,
     verifyOk: verifyResult.ok,
     warnings
+  }
+
+  // Return encrypted result
+  return {
+    payload: encryptPayload(JSON.stringify(result), secret)
   }
 })
 
