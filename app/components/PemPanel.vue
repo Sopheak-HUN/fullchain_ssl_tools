@@ -72,8 +72,9 @@ const emit = defineEmits<{
     </div>
 
     <pre
-      class="p-4 overflow-x-auto overflow-y-auto text-sm leading-6 text-slate-300 whitespace-pre-wrap h-[240px] no-select reveal-blur"
+      class="p-4 overflow-x-auto overflow-y-auto text-sm leading-6 text-slate-300 whitespace-pre-wrap h-[240px] no-select reveal-blur scrollbar-hide"
       :class="{ revealed }"
+      style="-ms-overflow-style: none; scrollbar-width: none;"
       >{{ content || "No content yet." }}</pre
     >
   </div>

@@ -282,25 +282,6 @@ function assignToTarget(target: "leaf" | "key" | "chain", text: string) {
   if (target === "chain") intermediateChain.value = text;
 }
 
-// ─── Drag & drop ─────────────────────────────────────────────────────────────
-function onDragOver(event: DragEvent, target: "leaf" | "key" | "chain") {
-  event.preventDefault();
-  draggingOver.value = target;
-}
-
-function onDragLeave() {
-  draggingOver.value = null;
-}
-
-async function onDrop(event: DragEvent, target: "leaf" | "key" | "chain") {
-  event.preventDefault();
-  draggingOver.value = null;
-  const file = event.dataTransfer?.files?.[0];
-  if (!file) return;
-  const text = await readFileText(file);
-  assignToTarget(target, text);
-}
-
 // ─── Copy ─────────────────────────────────────────────────────────────────────
 async function copyText(text: string, key: string) {
   if (!text) return;
@@ -496,24 +477,14 @@ function formatDate(iso: string) {
                 <ShieldCheck class="w-6 h-6" />Upload certificate materials
               </h2>
               <p class="mt-2 text-slate-300 leading-7">
-                Drag & drop or click to upload. If intermediate chain is
+                Click to upload files. If intermediate chain is
                 missing, backend will try to fetch it from AIA URL.
               </p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
               <!-- Leaf cert -->
-              <div
-                class="rounded-2xl border bg-slate-950 p-4 transition-colors"
-                :class="
-                  draggingOver === 'leaf'
-                    ? 'border-cyan-500 bg-cyan-500/5'
-                    : 'border-slate-800'
-                "
-                @dragover="onDragOver($event, 'leaf')"
-                @dragleave="onDragLeave"
-                @drop="onDrop($event, 'leaf')"
-              >
+              <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4 transition-colors">
                 <div class="flex items-start gap-3 mb-4">
                   <div
                     class="rounded-xl bg-slate-900 p-2 border border-slate-800"
@@ -525,7 +496,7 @@ function formatDate(iso: string) {
                       Leaf certificate (.crt / .pem)
                     </h3>
                     <p class="text-sm text-slate-400 mt-1">
-                      Required — drag & drop or upload
+                      Required — click to upload
                     </p>
                   </div>
                 </div>
@@ -544,23 +515,14 @@ function formatDate(iso: string) {
                 <textarea
                   v-model="leafCert"
                   rows="6"
-                  class="mt-4 w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-sm resize-none no-select hide-on-print"
+                  class="mt-4 w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-sm resize-none no-select hide-on-print scrollbar-hide"
+                  style="-ms-overflow-style: none; scrollbar-width: none;"
                   placeholder="Paste certificate content here."
                 />
               </div>
 
               <!-- Private key -->
-              <div
-                class="rounded-2xl border bg-slate-950 p-4 transition-colors"
-                :class="
-                  draggingOver === 'key'
-                    ? 'border-cyan-500 bg-cyan-500/5'
-                    : 'border-slate-800'
-                "
-                @dragover="onDragOver($event, 'key')"
-                @dragleave="onDragLeave"
-                @drop="onDrop($event, 'key')"
-              >
+              <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4 transition-colors">
                 <div class="flex items-start gap-3 mb-4">
                   <div
                     class="rounded-xl bg-slate-900 p-2 border border-slate-800"
@@ -572,7 +534,7 @@ function formatDate(iso: string) {
                       Private key (.key / .pem)
                     </h3>
                     <p class="text-sm text-slate-400 mt-1">
-                      Optional — drag & drop or upload
+                      Optional — click to upload
                     </p>
                   </div>
                 </div>
@@ -591,24 +553,15 @@ function formatDate(iso: string) {
                 <textarea
                   v-model="privateKey"
                   rows="6"
-                  class="mt-4 w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-sm resize-none no-select hide-on-print"
+                  class="mt-4 w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-sm resize-none no-select hide-on-print scrollbar-hide"
+                  style="-ms-overflow-style: none; scrollbar-width: none;"
                   placeholder="Paste private key content here."
                 />
               </div>
             </div>
 
             <!-- Intermediate chain -->
-            <div
-              class="rounded-2xl border bg-slate-950 p-4 transition-colors"
-              :class="
-                draggingOver === 'chain'
-                  ? 'border-cyan-500 bg-cyan-500/5'
-                  : 'border-slate-800'
-              "
-              @dragover="onDragOver($event, 'chain')"
-              @dragleave="onDragLeave"
-              @drop="onDrop($event, 'chain')"
-            >
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4 transition-colors">
               <div class="flex items-start gap-3 mb-4">
                 <div
                   class="rounded-xl bg-slate-900 p-2 border border-slate-800"
@@ -620,7 +573,7 @@ function formatDate(iso: string) {
                     Intermediate chain (.crt / .pem / .ca-bundle)
                   </h3>
                   <p class="text-sm text-slate-400 mt-1">
-                    Optional — drag & drop or upload. Backend will try to
+                    Optional — click to upload. Backend will try to
                     discover if omitted.
                   </p>
                 </div>
@@ -640,7 +593,8 @@ function formatDate(iso: string) {
               <textarea
                 v-model="intermediateChain"
                 rows="8"
-                class="mt-4 w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-sm resize-none no-select hide-on-print"
+                class="mt-4 w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-sm resize-none no-select hide-on-print scrollbar-hide"
+                style="-ms-overflow-style: none; scrollbar-width: none;"
                 placeholder="Paste one or more intermediate certificates here."
               />
             </div>
@@ -1051,7 +1005,7 @@ function formatDate(iso: string) {
 
         <!-- Sidebar -->
         <aside
-          class="rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl p-6 space-y-6"
+          class="rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl p-6 space-y-6 sticky top-10 h-fit"
         >
           <div>
             <h3 class="text-xl font-semibold">Important</h3>
@@ -1085,15 +1039,6 @@ function formatDate(iso: string) {
                 >tls.key = privkey.pem</code
               >
             </div>
-          </div>
-          <div
-            class="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-300 space-y-2"
-          >
-            <h4 class="font-semibold text-slate-100">Drag & drop tips</h4>
-            <p>
-              Each input zone accepts drag & drop. Drop directly onto the card —
-              it highlights in cyan when active.
-            </p>
           </div>
           <div
             class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100"
