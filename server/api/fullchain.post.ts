@@ -12,6 +12,16 @@ type ParsedCertInfo = {
   pem: string
 }
 
+type CertInfo = {
+  subject: string
+  issuer: string
+  notBefore: string
+  notAfter: string
+  daysLeft: number
+  isExpired: boolean
+  sans: string[]
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<RequestBody>(event)
 
@@ -40,6 +50,7 @@ export default defineEventHandler(async (event) => {
   const warnings: string[] = []
 
   const leaf = parseSingleCertificate(certPem, 'leaf certificate')
+  const certInfo = extractCertInfo(leaf.cert)
 
   let finalChainPem = providedChainPem
   let chainSource: 'provided' | 'aia-fetch' | 'not-found' = 'provided'
@@ -75,6 +86,12 @@ export default defineEventHandler(async (event) => {
     warnings.push('Private key does not match the uploaded leaf certificate.')
   }
 
+  if (certInfo.isExpired) {
+    warnings.push(`Certificate has expired ${Math.abs(certInfo.daysLeft)} day(s) ago.`)
+  } else if (certInfo.daysLeft < 30) {
+    warnings.push(`Certificate is expiring soon — ${certInfo.daysLeft} day(s) left.`)
+  }
+
   const verifyResult = verifyChain(leaf.cert, finalChainPem)
 
   if (!finalChainPem) {
@@ -88,11 +105,14 @@ export default defineEventHandler(async (event) => {
     serverPem,
     chainSource,
     keyMatches,
+    certInfo,
     verifyOutput: verifyResult.message,
     verifyOk: verifyResult.ok,
     warnings
   }
 })
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function normalizePemBlocks(text: string, type: string): string {
   if (!text) return ''
@@ -137,6 +157,36 @@ function parseCertificateChain(pemText: string): ParsedCertInfo[] {
   return splitPemCertificates(pemText).map((pem, index) =>
     parseSingleCertificate(pem, `chain certificate #${index + 1}`)
   )
+}
+
+function extractCertInfo(cert: forge.pki.Certificate): CertInfo {
+  const now = new Date()
+  const notAfter = cert.validity.notAfter
+  const notBefore = cert.validity.notBefore
+  const daysLeft = Math.floor((notAfter.getTime() - now.getTime()) / 86400000)
+
+  const subject = cert.subject.attributes
+    .map((a) => `${a.shortName}=${a.value}`)
+    .join(', ')
+
+  const issuer = cert.issuer.attributes
+    .map((a) => `${a.shortName}=${a.value}`)
+    .join(', ')
+
+  const sanExt = cert.extensions.find((e: any) => e.name === 'subjectAltName')
+  const sans: string[] = sanExt
+    ? (sanExt as any).altNames.map((n: any) => n.value as string)
+    : []
+
+  return {
+    subject,
+    issuer,
+    notBefore: notBefore.toISOString(),
+    notAfter: notAfter.toISOString(),
+    daysLeft,
+    isExpired: daysLeft < 0,
+    sans
+  }
 }
 
 function extractAiaUrlsFromForge(cert: forge.pki.Certificate): string[] {
@@ -190,8 +240,13 @@ async function fetchIntermediateChain(urls: string[]): Promise<string> {
 
 function certMatchesPrivateKey(cert: forge.pki.Certificate, privateKeyPem: string): boolean | null {
   try {
-    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem) as forge.pki.rsa.PrivateKey
-    const publicKeyFromKey = forge.pki.setRsaPublicKey(privateKey.n, privateKey.e)
+    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem)
+    if (!privateKey) return null // unsupported key type
+
+    const rsaKey = privateKey as forge.pki.rsa.PrivateKey
+    if (!rsaKey.n || !rsaKey.e) return null // EC or non-RSA key — skip matching
+
+    const publicKeyFromKey = forge.pki.setRsaPublicKey(rsaKey.n, rsaKey.e)
     const certPublic = cert.publicKey as forge.pki.rsa.PublicKey
 
     return (

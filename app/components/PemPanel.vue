@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, Download } from 'lucide-vue-next'
+import { Copy, Check, Download } from 'lucide-vue-next'
 
 defineProps<{
   title: string
@@ -7,6 +7,7 @@ defineProps<{
   filename: string
   content: string
   disabled?: boolean
+  copied?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -30,10 +31,12 @@ const emit = defineEmits<{
           @click="emit('copy')"
           :disabled="disabled"
           class="rounded-xl border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="copied ? 'border-green-500/50 text-green-400' : ''"
         >
           <span class="inline-flex items-center gap-2">
-            <Copy class="w-4 h-4" />
-            Copy
+            <Check v-if="copied" class="w-4 h-4" />
+            <Copy v-else class="w-4 h-4" />
+            {{ copied ? 'Copied!' : 'Copy' }}
           </span>
         </button>
 
@@ -51,6 +54,6 @@ const emit = defineEmits<{
       </div>
     </div>
 
-    <pre class="p-4 overflow-x-auto text-sm leading-6 text-slate-300 whitespace-pre-wrap min-h-[240px]">{{ content || 'No content yet.' }}</pre>
+    <pre class="p-4 overflow-x-auto overflow-y-auto text-sm leading-6 text-slate-300 whitespace-pre-wrap h-[240px]">{{ content || 'No content yet.' }}</pre>
   </div>
 </template>
