@@ -13,9 +13,13 @@ Often, obtaining an SSL certificate yields a `.crt` and a `.key` file, but many 
 - 🖱️ **Drag & Drop UI:** Streamlined interface to effortlessly load `.crt`, `.pem`, `.ca-bundle`, and `.key` files by dragging them directly onto the web interface.
 - ☸️ **Kubernetes Ready:** Dynamically generates a ready-to-apply Kubernetes `kubernetes.io/tls` Secret YAML file.
 - ⚙️ **Web Server Snippets:** Provides instant, copy-paste configuration snippets pointing to the correct PEM paths for both **nginx** and **Apache**.
+- 🛡️ **Payload Encryption:** All sensitive data sent between the browser and server is encrypted using **AES-256-GCM**, ensuring your private keys are never readable in plain text in network logs or intermediate proxies.
 - 📦 **Bulk Export:** Option to securely zip and download all the generated certificate PEM files at once.
 
 ## 🛡️ Privacy & Security Note
+
+> [!IMPORTANT]
+> 🔒 **Encryption by Default:** This tool is designed with a "Security First" approach. All communications between your browser and our server are **automatically encrypted** using the **AES-256-GCM** standard. Your sensitive certificate materials, particularly **Private Keys**, are never transmitted in plain text.
 
 This application handles highly sensitive SSL/TLS materials, particularly **Private Keys**. 
 
@@ -23,4 +27,4 @@ If you are using or deploying this tool:
 - 💻 **Local First:** For maximum security with production private keys, build and run this tool exclusively on your local machine (`localhost`).
 - 🏢 **Internal Deployment:** If hosting for a team, place it behind a VPN or strong access controls (like mutual TLS or SSO), and ensure traffic is strictly encrypted over HTTPS.
 - 🚫 **Zero Data Storage:** All uploaded data (certificates, keys, etc.) is processed purely in memory for immediate evaluation. Absolutely **no data is stored**, saved to disk, logged, or kept in any database.
-- 🗑️ Data sent to the `/api/fullchain` backend route is processed temporarily and discarded immediately after returning the result. Treat the server environment with standard security precautions.
+- 🗑️ Data sent to the backend is processed temporarily and discarded immediately after returning the result. Treat the server environment with standard security precautions.
