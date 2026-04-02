@@ -1,23 +1,40 @@
 <script setup lang="ts">
-import { Copy, Check, Download } from 'lucide-vue-next'
+import { Copy, Check, Download, Eye } from 'lucide-vue-next'
 
 defineProps<{
-  title: string
-  subtitle: string
-  filename: string
-  content: string
-  disabled?: boolean
-  copied?: boolean
-}>()
+  title: string;
+  subtitle: string;
+  filename: string;
+  content: string;
+  disabled?: boolean;
+  copied?: boolean;
+  revealed?: boolean;
+}>();
 
 const emit = defineEmits<{
-  (e: 'copy'): void
-  (e: 'download'): void
-}>()
+  (e: "copy"): void;
+  (e: "download"): void;
+  (e: "reveal"): void;
+}>();
 </script>
 
 <template>
-  <div class="rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden">
+  <div
+    class="rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden relative group"
+    :class="{ revealed }"
+  >
+    <!-- Click to Reveal Overlay -->
+    <div
+      v-if="!revealed && content"
+      @click="emit('reveal')"
+      class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md cursor-pointer hover:bg-slate-900/40 transition-all duration-300 pointer-events-auto"
+    >
+      <div class="text-center p-4">
+        <Eye class="w-8 h-8 text-cyan-400 mx-auto mb-2" />
+        <div class="text-sm font-semibold text-slate-100">Click to reveal sensitive data</div>
+        <div class="text-xs text-slate-400 mt-1">This area is protected against screen capture</div>
+      </div>
+    </div>
     <div class="px-4 py-3 border-b border-slate-800 flex items-start justify-between gap-4">
       <div>
         <div class="font-semibold text-slate-100">{{ title }}</div>
@@ -54,6 +71,10 @@ const emit = defineEmits<{
       </div>
     </div>
 
-    <pre class="p-4 overflow-x-auto overflow-y-auto text-sm leading-6 text-slate-300 whitespace-pre-wrap h-[240px]">{{ content || 'No content yet.' }}</pre>
+    <pre
+      class="p-4 overflow-x-auto overflow-y-auto text-sm leading-6 text-slate-300 whitespace-pre-wrap h-[240px] no-select reveal-blur"
+      :class="{ revealed }"
+      >{{ content || "No content yet." }}</pre
+    >
   </div>
 </template>

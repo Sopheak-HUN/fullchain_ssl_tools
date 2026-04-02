@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+/* ─── Anti-Screenshot / Anti-Copy Deterrents ─────────────────────────────────── */
+
+/* Aggressive: Prevent text selection and right-click on sensitive data containers */
+.no-select {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  pointer-events: none !important; /* Disable interaction unless revealed */
+}
+
+/* Hide sensitive elements when printing (Ctrl+P or Print to PDF) */
+@media print {
+  .hide-on-print,
+  .pem-panel-content,
+  pre,
+  code,
+  input,
+  textarea {
+    display: none !important;
+  }
+}
+
+/* Aggressive: Instant blackout on focus loss or mouse-leave */
+.privacy-blackout {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: none !important; /* No Fade, must be instant */
+  pointer-events: none !important;
+}
+
+/* Reveal-Blur: Sensitive data is blurred until clicked */
+.reveal-blur {
+  filter: blur(12px) grayscale(100%);
+  transition: filter 0.2s ease;
+  cursor: pointer;
+}
+
+.reveal-blur:hover {
+  filter: blur(8px) grayscale(50%);
+}
+
+.revealed {
+  filter: none !important;
+}

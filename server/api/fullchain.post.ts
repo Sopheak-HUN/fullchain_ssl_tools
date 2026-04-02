@@ -1,113 +1,141 @@
-import { defineEventHandler, readBody, createError } from 'h3'
-import forge from 'node-forge'
-import { decryptPayload, encryptPayload } from '../utils/crypto'
+import { defineEventHandler, readBody, createError, getCookie } from "h3";
+import forge from "node-forge";
+import { decryptPayload, encryptPayload } from "../utils/crypto";
 
 type RequestBody = {
-  cert?: string
-  key?: string
-  chain?: string
-}
+  cert?: string;
+  key?: string;
+  chain?: string;
+};
 
 type ParsedCertInfo = {
-  cert: forge.pki.Certificate
-  pem: string
-}
+  cert: forge.pki.Certificate;
+  pem: string;
+};
 
 type CertInfo = {
-  subject: string
-  issuer: string
-  notBefore: string
-  notAfter: string
-  daysLeft: number
-  isExpired: boolean
-  sans: string[]
-}
+  subject: string;
+  issuer: string;
+  notBefore: string;
+  notAfter: string;
+  daysLeft: number;
+  isExpired: boolean;
+  sans: string[];
+};
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
-  const secret = config.public.payloadSecret || 'fallback-secret-for-encryption-777'
+  //  Get the dynamic session token from the secure container cookie
+  const sessionSecret = getCookie(event, "ssl_session");
 
-  let body = await readBody<any>(event)
-  
-  // If payload is encrypted, decrypt it
-  if (body && typeof body.payload === 'string') {
-    const decrypted = decryptPayload(body.payload, secret)
-    if (decrypted) {
-      body = JSON.parse(decrypted)
-    }
+  // Fallback to runtime config if no session (only for legacy/admin paths if needed)
+  const config = useRuntimeConfig();
+  const secret = (sessionSecret || config.payloadSecret) as string;
+
+  if (!secret) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: "No secure session found. Please refresh the page.",
+    });
   }
 
-  const certInput = (body.cert || '').trim()
-  const keyInput = (body.key || '').trim()
-  const chainInput = (body.chain || '').trim()
+  let body = await readBody<any>(event);
+
+  // If payload is encrypted, decrypt it
+  if (body && typeof body.payload === "string") {
+    const decrypted = decryptPayload(body.payload, secret);
+
+    if (!decrypted) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "Failed to decrypt request payload",
+      });
+    }
+    body = JSON.parse(decrypted);
+  }
+
+  const certInput = (body.cert || "").trim();
+  const keyInput = (body.key || "").trim();
+  const chainInput = (body.chain || "").trim();
 
   if (!certInput) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Certificate is required'
-    })
+      statusMessage: "Certificate is required",
+    });
   }
 
-  const certPem = normalizePemBlocks(certInput, 'CERTIFICATE')
-  const keyPem = normalizePrivateKey(keyInput)
-  const providedChainPem = normalizePemBlocks(chainInput, 'CERTIFICATE')
+  const certPem = normalizePemBlocks(certInput, "CERTIFICATE");
+  const keyPem = normalizePrivateKey(keyInput);
+  const providedChainPem = normalizePemBlocks(chainInput, "CERTIFICATE");
 
   if (!certPem) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Invalid leaf certificate PEM'
-    })
+      statusMessage: "Invalid leaf certificate PEM",
+    });
   }
 
-  const warnings: string[] = []
+  const warnings: string[] = [];
 
-  const leaf = parseSingleCertificate(certPem, 'leaf certificate')
-  const certInfo = extractCertInfo(leaf.cert)
+  const leaf = parseSingleCertificate(certPem, "leaf certificate");
+  const certInfo = extractCertInfo(leaf.cert);
 
-  let finalChainPem = providedChainPem
-  let chainSource: 'provided' | 'aia-fetch' | 'not-found' = 'provided'
+  let finalChainPem = providedChainPem;
+  let chainSource: "provided" | "aia-fetch" | "not-found" = "provided";
 
   if (!finalChainPem) {
-    const aiaUrls = extractAiaUrlsFromForge(leaf.cert)
+    const aiaUrls = extractAiaUrlsFromForge(leaf.cert);
 
     if (aiaUrls.length) {
-      const fetched = await fetchIntermediateChain(aiaUrls)
+      const fetched = await fetchIntermediateChain(aiaUrls);
       if (fetched) {
-        finalChainPem = fetched
-        chainSource = 'aia-fetch'
+        finalChainPem = fetched;
+        chainSource = "aia-fetch";
       } else {
-        chainSource = 'not-found'
+        chainSource = "not-found";
         warnings.push(
-          'Intermediate CA could not be fetched from AIA URL. The generated fullchain may still be incomplete.'
-        )
+          "Intermediate CA could not be fetched from AIA URL. The generated fullchain may still be incomplete.",
+        );
       }
     } else {
-      chainSource = 'not-found'
+      chainSource = "not-found";
       warnings.push(
-        'No AIA issuer URL was found in the leaf certificate. Intermediate CA could not be auto-discovered.'
-      )
+        "No AIA issuer URL was found in the leaf certificate. Intermediate CA could not be auto-discovered.",
+      );
     }
   }
 
-  const fullchainPem = [certPem, finalChainPem].filter(Boolean).join('\n').trim()
-  const privkeyPem = keyPem
-  const serverPem = [fullchainPem, privkeyPem].filter(Boolean).join('\n').trim()
+  const fullchainPem = [certPem, finalChainPem]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  const privkeyPem = keyPem;
+  const serverPem = [fullchainPem, privkeyPem]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 
-  const keyMatches = keyPem ? certMatchesPrivateKey(leaf.cert, keyPem) : null
+  const keyMatches = keyPem ? certMatchesPrivateKey(leaf.cert, keyPem) : null;
   if (keyPem && keyMatches === false) {
-    warnings.push('Private key does not match the uploaded leaf certificate.')
+    warnings.push("Private key does not match the uploaded leaf certificate.");
   }
 
   if (certInfo.isExpired) {
-    warnings.push(`Certificate has expired ${Math.abs(certInfo.daysLeft)} day(s) ago.`)
+    warnings.push(
+      `Certificate has expired ${Math.abs(certInfo.daysLeft)} day(s) ago.`,
+    );
   } else if (certInfo.daysLeft < 30) {
-    warnings.push(`Certificate is expiring soon — ${certInfo.daysLeft} day(s) left.`)
+    warnings.push(
+      `Certificate is expiring soon — ${certInfo.daysLeft} day(s) left.`,
+    );
   }
 
-  const verifyResult = verifyChain(leaf.cert, finalChainPem)
+  const verifyResult = verifyChain(leaf.cert, finalChainPem);
 
   if (!finalChainPem) {
-    warnings.push('A true public fullchain usually needs one or more intermediate certificates.')
+    warnings.push(
+      "A true public fullchain usually needs one or more intermediate certificates.",
+    );
   }
 
   const result = {
@@ -120,80 +148,82 @@ export default defineEventHandler(async (event) => {
     certInfo,
     verifyOutput: verifyResult.message,
     verifyOk: verifyResult.ok,
-    warnings
-  }
+    warnings,
+  };
 
-  // Return encrypted result
+  //  Encrypt response with private secret
   return {
-    payload: encryptPayload(JSON.stringify(result), secret)
-  }
-})
+    payload: encryptPayload(JSON.stringify(result), secret),
+  };
+});
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function normalizePemBlocks(text: string, type: string): string {
-  if (!text) return ''
+  if (!text) return "";
   const regex = new RegExp(
     `-----BEGIN ${type}-----[\\s\\S]*?-----END ${type}-----`,
-    'g'
-  )
-  const matches = text.match(regex) || []
-  return matches.map((m) => m.trim()).join('\n')
+    "g",
+  );
+  const matches = text.match(regex) || [];
+  return matches.map((m) => m.trim()).join("\n");
 }
 
 function normalizePrivateKey(text: string): string {
-  if (!text) return ''
+  if (!text) return "";
   const regex =
-    /-----BEGIN (?:RSA |EC |ENCRYPTED |)PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |ENCRYPTED |)PRIVATE KEY-----/g
-  const matches = text.match(regex) || []
-  return matches.map((m) => m.trim()).join('\n')
+    /-----BEGIN (?:RSA |EC |ENCRYPTED |)PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |ENCRYPTED |)PRIVATE KEY-----/g;
+  const matches = text.match(regex) || [];
+  return matches.map((m) => m.trim()).join("\n");
 }
 
 function splitPemCertificates(pemText: string): string[] {
-  if (!pemText) return []
+  if (!pemText) return [];
   const matches =
-    pemText.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) || []
-  return matches.map((m) => m.trim())
+    pemText.match(
+      /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g,
+    ) || [];
+  return matches.map((m) => m.trim());
 }
 
 function parseSingleCertificate(pem: string, label: string): ParsedCertInfo {
   try {
     return {
       cert: forge.pki.certificateFromPem(pem),
-      pem
-    }
+      pem,
+    };
   } catch {
     throw createError({
       statusCode: 400,
-      statusMessage: `Invalid ${label}`
-    })
+      statusMessage: `Invalid ${label}`,
+    });
   }
 }
 
 function parseCertificateChain(pemText: string): ParsedCertInfo[] {
   return splitPemCertificates(pemText).map((pem, index) =>
-    parseSingleCertificate(pem, `chain certificate #${index + 1}`)
-  )
+    parseSingleCertificate(pem, `chain certificate #${index + 1}`),
+  );
 }
 
 function extractCertInfo(cert: forge.pki.Certificate): CertInfo {
-  const now = new Date()
-  const notAfter = cert.validity.notAfter
-  const notBefore = cert.validity.notBefore
-  const daysLeft = Math.floor((notAfter.getTime() - now.getTime()) / 86400000)
+  const now = new Date();
+  const notAfter = cert.validity.notAfter;
+  const notBefore = cert.validity.notBefore;
+  const daysLeft = Math.floor((notAfter.getTime() - now.getTime()) / 86400000);
 
   const subject = cert.subject.attributes
     .map((a) => `${a.shortName}=${a.value}`)
-    .join(', ')
+    .join(", ");
 
   const issuer = cert.issuer.attributes
     .map((a) => `${a.shortName}=${a.value}`)
-    .join(', ')
+    .join(", ");
 
-  const sanExt = cert.extensions.find((e: any) => e.name === 'subjectAltName')
+  const sanExt = cert.extensions.find((e: any) => e.name === "subjectAltName");
   const sans: string[] = sanExt
     ? (sanExt as any).altNames.map((n: any) => n.value as string)
-    : []
+    : [];
 
   return {
     subject,
@@ -202,48 +232,51 @@ function extractCertInfo(cert: forge.pki.Certificate): CertInfo {
     notAfter: notAfter.toISOString(),
     daysLeft,
     isExpired: daysLeft < 0,
-    sans
-  }
+    sans,
+  };
 }
 
 function extractAiaUrlsFromForge(cert: forge.pki.Certificate): string[] {
-  const urls = new Set<string>()
+  const urls = new Set<string>();
 
   for (const ext of cert.extensions || []) {
-    if (ext.name !== 'authorityInfoAccess' || !Array.isArray((ext as any).accessDescriptions)) {
-      continue
+    if (
+      ext.name !== "authorityInfoAccess" ||
+      !Array.isArray((ext as any).accessDescriptions)
+    ) {
+      continue;
     }
 
     for (const desc of (ext as any).accessDescriptions) {
-      const value = desc?.accessLocation?.value
-      if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
-        urls.add(value)
+      const value = desc?.accessLocation?.value;
+      if (typeof value === "string" && /^https?:\/\//i.test(value)) {
+        urls.add(value);
       }
     }
   }
 
-  return [...urls]
+  return [...urls];
 }
 
 async function fetchIntermediateChain(urls: string[]): Promise<string> {
   for (const url of urls) {
     try {
-      const response = await fetch(url)
-      if (!response.ok) continue
+      const response = await fetch(url);
+      if (!response.ok) continue;
 
-      const buffer = Buffer.from(await response.arrayBuffer())
-      const text = buffer.toString('utf8')
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const text = buffer.toString("utf8");
 
-      if (text.includes('-----BEGIN CERTIFICATE-----')) {
-        const normalized = normalizePemBlocks(text, 'CERTIFICATE')
-        if (normalized) return normalized
+      if (text.includes("-----BEGIN CERTIFICATE-----")) {
+        const normalized = normalizePemBlocks(text, "CERTIFICATE");
+        if (normalized) return normalized;
       }
 
       // Try DER -> PEM
       try {
-        const asn1 = forge.asn1.fromDer(buffer.toString('binary'))
-        const cert = forge.pki.certificateFromAsn1(asn1)
-        return forge.pki.certificateToPem(cert).trim()
+        const asn1 = forge.asn1.fromDer(buffer.toString("binary"));
+        const cert = forge.pki.certificateFromAsn1(asn1);
+        return forge.pki.certificateToPem(cert).trim();
       } catch {
         // keep trying next URL
       }
@@ -252,54 +285,62 @@ async function fetchIntermediateChain(urls: string[]): Promise<string> {
     }
   }
 
-  return ''
+  return "";
 }
 
-function certMatchesPrivateKey(cert: forge.pki.Certificate, privateKeyPem: string): boolean | null {
+function certMatchesPrivateKey(
+  cert: forge.pki.Certificate,
+  privateKeyPem: string,
+): boolean | null {
   try {
-    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem)
-    if (!privateKey) return null // unsupported key type
+    const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+    if (!privateKey) return null;
 
-    const rsaKey = privateKey as forge.pki.rsa.PrivateKey
-    if (!rsaKey.n || !rsaKey.e) return null // EC or non-RSA key — skip matching
+    const rsaKey = privateKey as forge.pki.rsa.PrivateKey;
+    if (!rsaKey.n || !rsaKey.e) return null; // EC or non-RSA key
 
-    const publicKeyFromKey = forge.pki.setRsaPublicKey(rsaKey.n, rsaKey.e)
-    const certPublic = cert.publicKey as forge.pki.rsa.PublicKey
+    const publicKeyFromKey = forge.pki.setRsaPublicKey(rsaKey.n, rsaKey.e);
+    const certPublic = cert.publicKey as forge.pki.rsa.PublicKey;
 
     return (
       publicKeyFromKey.n.compareTo(certPublic.n) === 0 &&
       publicKeyFromKey.e.compareTo(certPublic.e) === 0
-    )
+    );
   } catch {
-    return null
+    return null;
   }
 }
 
 function verifyChain(
   leaf: forge.pki.Certificate,
-  chainPem: string
+  chainPem: string,
 ): { ok: boolean; message: string } {
-  const chain = parseCertificateChain(chainPem)
+  const chain = parseCertificateChain(chainPem);
 
   if (!chain.length) {
     return {
       ok: false,
-      message: 'No intermediate chain available. Structural verification could not be completed.'
-    }
+      message:
+        "No intermediate chain available. Structural verification could not be completed.",
+    };
   }
 
   try {
-    const caStore = forge.pki.createCaStore(chain.map((c) => c.pem))
-    forge.pki.verifyCertificateChain(caStore, [leaf, ...chain.map((c) => c.cert)])
+    const caStore = forge.pki.createCaStore(chain.map((c) => c.pem));
+    forge.pki.verifyCertificateChain(caStore, [
+      leaf,
+      ...chain.map((c) => c.cert),
+    ]);
 
     return {
       ok: true,
-      message: 'Chain structure verified against provided/fetched intermediate certificate(s).'
-    }
+      message:
+        "Chain structure verified against provided/fetched intermediate certificate(s).",
+    };
   } catch (error: any) {
     return {
       ok: false,
-      message: error?.message || 'Certificate chain verification failed.'
-    }
+      message: error?.message || "Certificate chain verification failed.",
+    };
   }
 }

@@ -9,10 +9,21 @@ export default defineNuxtConfig({
   security: {
     hidePoweredBy: false,
   },
+  routeRules: {
+    "/**": {
+      headers: {
+        "Permissions-Policy": "display-capture=()",
+      },
+    },
+  },
   runtimeConfig: {
+    // PRIVATE — only accessible server-side via useRuntimeConfig()
+    // Never exposed to the browser bundle
+    payloadSecret:
+      process.env.PAYLOAD_SECRET || "fallback-secret-for-encryption-777",
     public: {
-      payloadSecret: process.env.PAYLOAD_SECRET || 'fallback-secret-for-encryption-777'
-    }
+      // nothing sensitive here
+    },
   },
   vite: {
     optimizeDeps: {
